@@ -1,0 +1,194 @@
+package order
+
+import (
+	"database/sql"
+	"fmt"
+	"log"
+	"sync"
+
+	_ "github.com/lib/pq"
+)
+
+type CartItem struct {
+	ID        int
+	BuyerID   int
+	ProductID int
+	Qty       int
+}
+
+type Order struct {
+	BuyerID   int
+	CartItems []CartItem
+}
+
+type Cart struct {
+	mu       sync.Mutex
+	CartData map[int][]CartItem
+}
+
+const (
+	dbUser     = "your_db_user"
+	dbPassword = "your_db_password"
+	dbName     = "your_db_name"
+)
+
+func main() {
+	// Open a database connection
+	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable", dbUser, dbPassword, dbName))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	// Example order
+	order := &Order{
+		BuyerID: 1,
+		CartItems: []CartItem{
+			{ProductID: 1, Qty: 3},
+			{ProductID: 2, Qty: 2},
+			// Add more cart items as needed
+		},
+	}
+
+	// Initialize the cart and load cart items from the database
+	cart := &Cart{
+		CartData: make(map[int][]CartItem),
+	}
+	cart.LoadCartFromDatabase(db, order.BuyerID)
+
+	// Process the order and update the cart
+	err = ProcessOrderAndUpdateCart(order, cart, db)
+	if err != nil {
+		fmt.Println("Order failed:", err)
+	} else {
+		fmt.Println("Order successful")
+	}
+
+	// Display updated cart
+	fmt.Println("Updated Cart:")
+	fmt.Println(cart.CartData)
+}
+
+// LoadCartFromDatabase loads cart items from the database and initializes the cart
+func (c *Cart) LoadCartFromDatabase(db *sql.DB, buyerID int) {
+	rows, err := db.Query("SELECT id, buyer_id, product_id, qty FROM cart_items WHERE buyer_id = $1", buyerID)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cartItem CartItem
+		if err := rows.Scan(&cartItem.ID, &cartItem.BuyerID, &cartItem.ProductID, &cartItem.Qty); err != nil {
+			log.Fatal(err)
+		}
+		c.AddItem(cartItem)
+	}
+}
+
+// ProcessOrderAndUpdateCart processes the order and updates the cart
+func ProcessOrderAndUpdateCart(order *Order, cart *Cart, db *sql.DB) error {
+	var validationErr error
+
+	// Validate cart items and product quantities
+	for _, item := range order.CartItems {
+		// Validate cart item
+		if !cart.ValidateCartItem(item) {
+			validationErr = fmt.Errorf("Validation failed for ProductID %d", item.ProductID)
+			return validationErr
+		}
+
+		// Update cart
+		cart.mu.Lock()
+		defer cart.mu.Unlock()
+		cart.UpdateCartItem(item)
+	}
+
+	// Check if there was a validation error
+	if validationErr != nil {
+		return validationErr
+	}
+
+	// Store the order in the database
+	err := StoreOrderInDatabase(order, db)
+	if err != nil {
+		return err
+	}
+
+	// Store order details in the database
+	err = StoreOrderDetailsInDatabase(order, db)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// AddItem adds a cart item to the cart
+func (c *Cart) AddItem(item CartItem) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.CartData[item.ProductID] = append(c.CartData[item.ProductID], item)
+}
+
+// UpdateCartItem updates the cart item quantity in the cart
+func (c *Cart) UpdateCartItem(item CartItem) {
+	// Assuming item.ProductID is the key for the cart
+	for i, cartItem := range c.CartData[item.ProductID] {
+		if cartItem.ID == item.ID {
+			// Update the quantity
+			c.CartData[item.ProductID][i].Qty += item.Qty
+			return
+		}
+	}
+
+	// If the item is not in the cart, add it
+	c.AddItem(item)
+}
+
+// ValidateCartItem checks if the cart item is valid
+func (c *Cart) ValidateCartItem(item CartItem) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if cartItems, exists := c.CartData[item.ProductID]; exists {
+		// Check if there is enough quantity in the cart
+		totalQty := 0
+		for _, cartItem := range cartItems {
+			totalQty += cartItem.Qty
+		}
+		return totalQty+item.Qty <= item.Qty
+	}
+
+	return true
+}
+
+// StoreOrderInDatabase stores the order in the database
+func StoreOrderInDatabase(order *Order, db *sql.DB) error {
+	// Insert the order into the orders table
+	_, err := db.Exec("INSERT INTO orders (buyer_id) VALUES ($1)", order.BuyerID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// StoreOrderDetailsInDatabase stores the order details in the database
+func StoreOrderDetailsInDatabase(order *Order, db *sql.DB) error {
+	// Insert the order details into the order_detail table
+	stmt, err := db.Prepare("INSERT INTO order_detail (order_id, product_id, qty) VALUES ($1, $2, $3)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, item := range order.CartItems {
+		_, err := stmt.Exec(order.BuyerID, item.ProductID, item.Qty)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}

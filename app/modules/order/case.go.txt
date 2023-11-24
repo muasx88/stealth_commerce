@@ -1,0 +1,185 @@
+package order
+
+import (
+	"database/sql"
+	"fmt"
+	"log"
+	"sync"
+
+	_ "github.com/lib/pq"
+)
+
+type Product struct {
+	ID   int
+	Name string
+	Qty  int
+	// Add other product fields as needed
+}
+
+type CartItem struct {
+	ProductID int
+	Qty       int
+}
+
+type Order struct {
+	BuyerID   int
+	CartItems []CartItem
+}
+
+type Inventory struct {
+	mu       sync.Mutex
+	Products map[int]Product
+}
+
+const (
+	dbUser     = "your_db_user"
+	dbPassword = "your_db_password"
+	dbName     = "your_db_name"
+)
+
+func execute() {
+	// Open a database connection
+	db, err := sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable", dbUser, dbPassword, dbName))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	// Initialize the inventory by loading products from the database
+	inventory := LoadProductsFromDatabase(db)
+
+	// Example order
+	order := &Order{
+		BuyerID: 1,
+		CartItems: []CartItem{
+			{ProductID: 1, Qty: 3},
+			{ProductID: 2, Qty: 2},
+			// Add more cart items as needed
+		},
+	}
+
+	// Process the order and store in the database
+	err = ProcessOrderAndStoreInDatabase(order, inventory, db)
+	if err != nil {
+		fmt.Println("Order failed:", err)
+	} else {
+		fmt.Println("Order successful")
+	}
+}
+
+// LoadProductsFromDatabase loads products from the database and initializes the inventory
+func LoadProductsFromDatabase(db *sql.DB) *Inventory {
+	rows, err := db.Query("SELECT id, name, qty FROM products")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	inventory := &Inventory{
+		Products: make(map[int]Product),
+	}
+
+	for rows.Next() {
+		var product Product
+		if err := rows.Scan(&product.ID, &product.Name, &product.Qty); err != nil {
+			log.Fatal(err)
+		}
+		inventory.Products[product.ID] = product
+	}
+
+	return inventory
+}
+
+// ProcessOrderAndStoreInDatabase processes the order and stores it in the database
+func ProcessOrderAndStoreInDatabase(order *Order, inventory *Inventory, db *sql.DB) error {
+	var wg sync.WaitGroup
+	var validationErr error
+
+	// Validate cart items and product quantities concurrently
+	for _, item := range order.CartItems {
+		wg.Add(1)
+		go func(item CartItem) {
+			defer wg.Done()
+
+			// Validate cart item
+			if !ValidateCartItem(item, inventory) {
+				validationErr = fmt.Errorf("Validation failed for ProductID %d", item.ProductID)
+				return
+			}
+
+			// Update inventory
+			inventory.mu.Lock()
+			defer inventory.mu.Unlock()
+			if product, exists := inventory.Products[item.ProductID]; exists {
+				product.Qty -= item.Qty
+				inventory.Products[item.ProductID] = product
+			}
+		}(item)
+	}
+
+	// Wait for all goroutines to finish
+	wg.Wait()
+
+	// Check if there was a validation error
+	if validationErr != nil {
+		return validationErr
+	}
+
+	// Store the order in the database
+	orderID, err := StoreOrderInDatabase(order, db)
+	if err != nil {
+		return err
+	}
+
+	// Store order details in the database
+	err = StoreOrderDetailsInDatabase(orderID, order.CartItems, db)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// StoreOrderInDatabase stores the order in the database and returns the order ID
+func StoreOrderInDatabase(order *Order, db *sql.DB) (int, error) {
+	var orderID int
+
+	// Insert the order into the orders table
+	err := db.QueryRow("INSERT INTO orders (buyer_id) VALUES ($1) RETURNING id", order.BuyerID).Scan(&orderID)
+	if err != nil {
+		return 0, err
+	}
+
+	return orderID, nil
+}
+
+// StoreOrderDetailsInDatabase stores the order details in the database
+func StoreOrderDetailsInDatabase(orderID int, cartItems []CartItem, db *sql.DB) error {
+	// Insert the order details into the order_detail table
+	stmt, err := db.Prepare("INSERT INTO order_detail (order_id, product_id, qty) VALUES ($1, $2, $3)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, item := range cartItems {
+		_, err := stmt.Exec(orderID, item.ProductID, item.Qty)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// ValidateCartItem checks if the cart item is valid
+func ValidateCartItem(item CartItem, inventory *Inventory) bool {
+	inventory.mu.Lock()
+	defer inventory.mu.Unlock()
+
+	if product, exists := inventory.Products[item.ProductID]; exists {
+		return product.Qty >= item.Qty
+	}
+
+	return false
+}
