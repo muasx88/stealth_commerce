@@ -79,3 +79,14 @@ INSERT INTO admin (username, password, fullname) VALUES ('admin', '$2a$10$.3A/kq
 -- insert buyer data
 INSERT INTO buyers (fullname, address, secret_key) VALUES ('Peter Parker', 'Queens', 'jaringlaba123');
 INSERT INTO buyers (fullname, address, secret_key) VALUES ('Bruce Wayne', 'Gotham City', 'kelelawar123');
+
+
+-- payment table
+CREATE TABLE IF NOT EXISTS payments (
+    id SERIAL PRIMARY KEY,
+    order_id INT NOT NULL,
+    status VARCHAR(20),
+    created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_payment_order_id FOREIGN KEY (order_id) REFERENCES orders (id)
+);
+CREATE INDEX IF NOT EXISTS idx_payment_order_id ON payments (order_id);

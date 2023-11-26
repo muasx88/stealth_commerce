@@ -5,6 +5,12 @@ import (
 	"time"
 )
 
+var (
+	ORDER_PENDING   = "PENDING"
+	ORDER_COMPLETED = "COMPLETED"
+	ORDER_CANCELED  = "CANCELED"
+)
+
 type OrderPayload struct {
 	CartIds []int64 `json:"cart_ids" validate:"min=1,dive,required"`
 }
@@ -34,8 +40,12 @@ type OrderDetail struct {
 
 type OrderUsecase interface {
 	CreateOrder(ctx context.Context, buyerId int64, payload OrderPayload) (OrderResponse, error)
+	DetailByOrderNumber(ctx context.Context, buyerId int64, orderNumber string) (OrderResponse, error)
+	UpdateStatus(ctx context.Context, buyerId int64, orderId int64, status string) error
 }
 
 type OrderRepository interface {
 	CreateOrder(ctx context.Context, buyerId int64, payload Order) (OrderResponse, error)
+	DetailByOrderNumber(ctx context.Context, buyerId int64, orderNumber string) (OrderResponse, error)
+	UpdateStatus(ctx context.Context, buyerId int64, orderId int64, status string) error
 }

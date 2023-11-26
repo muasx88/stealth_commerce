@@ -23,7 +23,7 @@ This project has 2 user access :
 - can view product detail
 - can add product to cart
 - can update cart
-- can checkout
+- can checkout (order and pay)
 
 #### Run the Applications following these steps:
 
@@ -62,5 +62,5 @@ $ ./target/stealth-commerce
 
 TODO:
 
-- payment to complete order process
-- cancel order if payment failed
+- auto cancel order if not paid after 30 minute
+- migration

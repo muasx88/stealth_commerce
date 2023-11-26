@@ -17,6 +17,7 @@ var (
 	ErrBuyerNotFound   = errors.New("buyer not found")
 	ErrCartNotFound    = errors.New("cart not found")
 	ErrUserNotFound    = errors.New("user not found")
+	ErrOrderNotFound   = errors.New("order not found")
 )
 
 var ErrorMap = map[error]int{
@@ -25,6 +26,7 @@ var ErrorMap = map[error]int{
 	ErrProductNotFound:     http.StatusNotFound,
 	ErrBuyerNotFound:       http.StatusNotFound,
 	ErrCartNotFound:        http.StatusNotFound,
+	ErrOrderNotFound:       http.StatusNotFound,
 	ErrUserNotFound:        http.StatusNotFound,
 	ErrConflict:            http.StatusConflict,
 }

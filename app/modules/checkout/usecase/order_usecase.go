@@ -120,6 +120,20 @@ func (u *orderUsecase) CreateOrder(ctx context.Context, buyerId int64, payload d
 	return res, nil
 }
 
+func (u *orderUsecase) DetailByOrderNumber(ctx context.Context, buyerId int64, orderNumber string) (res domain.OrderResponse, err error) {
+	res, err = u.orderRepo.DetailByOrderNumber(ctx, buyerId, orderNumber)
+	if err != nil {
+		log.Error(err.Error())
+		return res, err
+	}
+
+	return
+}
+
+func (u *orderUsecase) UpdateStatus(ctx context.Context, buyerId, orderId int64, status string) error {
+	return u.orderRepo.UpdateStatus(ctx, buyerId, orderId, status)
+}
+
 func (u *orderUsecase) saveOrder(ctx context.Context, buyerId int64, orderData domain.Order, wg *sync.WaitGroup) (res domain.OrderResponse, err error) {
 	defer wg.Done()
 

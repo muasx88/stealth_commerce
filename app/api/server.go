@@ -11,7 +11,7 @@ import (
 	"github.com/muasx88/stealth_commerce/app/config/middlewares"
 	"github.com/muasx88/stealth_commerce/app/modules/auth"
 	"github.com/muasx88/stealth_commerce/app/modules/cart"
-	"github.com/muasx88/stealth_commerce/app/modules/order"
+	"github.com/muasx88/stealth_commerce/app/modules/checkout"
 	"github.com/muasx88/stealth_commerce/app/modules/product"
 
 	"github.com/gin-contrib/requestid"
@@ -58,7 +58,7 @@ func (server *Server) setupRoute() {
 	auth.AuthRoute(router, server.dbConn)
 	product.ProductRoute(router, server.dbConn)
 	cart.CartRoute(router, server.dbConn)
-	order.OrderRoute(router, server.dbConn)
+	checkout.CheckoutRoute(router, server.dbConn)
 
 	server.router = router
 }

@@ -94,3 +94,56 @@ func (r orderRepository) CreateOrder(ctx context.Context, buyerId int64, payload
 	res = order
 	return
 }
+
+func (r orderRepository) DetailByOrderNumber(ctx context.Context, buyerId int64, orderNumber string) (res domain.OrderResponse, err error) {
+	query := `
+		SELECT id, order_number, grand_total, status, created_date
+		FROM orders
+		WHERE buyer_id = $1 AND order_number = $2
+	`
+
+	var result domain.OrderResponse
+	err = r.db.QueryRow(ctx, query, buyerId, orderNumber).
+		Scan(
+			&result.Id,
+			&result.OrderNumber,
+			&result.GrandTotal,
+			&result.Status,
+			&result.CreatedDate,
+		)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return res, domain.ErrOrderNotFound
+		} else {
+			return res, err
+		}
+	}
+
+	res = result
+	return
+}
+
+func (r orderRepository) UpdateStatus(ctx context.Context, buyerId, orderId int64, status string) error {
+	query := `
+		UPDATE orders
+		SET status = $1
+		WHERE buyer_id = $2 and id = $3
+	`
+
+	_, err := r.db.Exec(
+		ctx,
+		query,
+		status,
+		buyerId,
+		orderId,
+	)
+
+	if err != nil {
+		log.Errorf("error update order status: %s", err.Error())
+		return err
+	}
+
+	log.Info("success update status order")
+	return nil
+}
